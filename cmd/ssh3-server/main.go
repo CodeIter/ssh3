@@ -774,7 +774,7 @@ func main() {
 
 		logFileName := os.Getenv("SSH3_LOG_FILE")
 		if logFileName == "" {
-			logFileName = "/var/log/ssh3.log"
+			logFileName = util.FullPathWithEnv("/var/log/ssh3.log", "PREFIX")
 		}
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
