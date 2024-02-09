@@ -25,17 +25,17 @@ integration-tests:
 		CC=$(CC) \
 		CGO_ENABLED=1 \
 		GOOS=$(GOOS) \
-		SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 \
+		QUICSSH_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 \
 		go run github.com/onsi/ginkgo/v2/ginkgo ./integration_tests
 
 install:
-	$(GO_OPTS) go install $(BUILDFLAGS) ./cmd/ssh3
-	$(GO_OPTS) go install $(BUILDFLAGS) ./cmd/ssh3-server
+	$(GO_OPTS) go install $(BUILDFLAGS) ./cmd/quicssh
+	$(GO_OPTS) go install $(BUILDFLAGS) ./cmd/quicssh-server
 
 build: client server
 
 client:
-	$(GO_OPTS) go build -tags "$(GO_TAGS)" $(BUILD_FLAGS) -o bin/client ./cmd/ssh3/
+	$(GO_OPTS) go build -tags "$(GO_TAGS)" $(BUILD_FLAGS) -o bin/client ./cmd/quicssh/
 
 server:
-	$(GO_OPTS) go build -tags "$(GO_TAGS)" $(BUILD_FLAGS) -o bin/server ./cmd/ssh3-server/
+	$(GO_OPTS) go build -tags "$(GO_TAGS)" $(BUILD_FLAGS) -o bin/server ./cmd/quicssh-server/

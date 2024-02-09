@@ -1,4 +1,4 @@
-package ssh3
+package quicssh
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"io"
 	"net"
 
-	ssh3 "github.com/francoismichel/ssh3/message"
-	"github.com/francoismichel/ssh3/util"
+	quicssh "github.com/francoismichel/quicssh/message"
+	"github.com/francoismichel/quicssh/util"
 
 	"github.com/quic-go/quic-go"
 )
@@ -23,7 +23,7 @@ func (e ChannelOpenFailure) Error() string {
 }
 
 type MessageOnNonConfirmedChannel struct {
-	message ssh3.Message
+	message quicssh.Message
 }
 
 func (e MessageOnNonConfirmedChannel) Error() string {
@@ -46,17 +46,17 @@ func (e SentDatagramOnNonDatagramChannel) Error() string {
 	return fmt.Sprintf("a datagram has been sent on non-datagram channel %d", e.channelID)
 }
 
-type PtyReqHandler func(channel Channel, request ssh3.PtyRequest, wantReply bool)
-type X11ReqHandler func(channel Channel, request ssh3.X11Request, wantReply bool)
-type ShellReqHandler func(channel Channel, request ssh3.ShellRequest, wantReply bool)
-type ExecReqHandler func(channel Channel, request ssh3.ExecRequest, wantReply bool)
-type SubsystemReqHandler func(channel Channel, request ssh3.SubsystemRequest, wantReply bool)
-type WindowChangeReqHandler func(channel Channel, request ssh3.WindowChangeRequest, wantReply bool)
-type SignalReqHandler func(channel Channel, request ssh3.SignalRequest, wantReply bool)
-type ExitStatusReqHandler func(channel Channel, request ssh3.ExitStatusRequest, wantReply bool)
-type ExitSignalReqHandler func(channel Channel, request ssh3.ExitSignalRequest, wantReply bool)
+type PtyReqHandler func(channel Channel, request quicssh.PtyRequest, wantReply bool)
+type X11ReqHandler func(channel Channel, request quicssh.X11Request, wantReply bool)
+type ShellReqHandler func(channel Channel, request quicssh.ShellRequest, wantReply bool)
+type ExecReqHandler func(channel Channel, request quicssh.ExecRequest, wantReply bool)
+type SubsystemReqHandler func(channel Channel, request quicssh.SubsystemRequest, wantReply bool)
+type WindowChangeReqHandler func(channel Channel, request quicssh.WindowChangeRequest, wantReply bool)
+type SignalReqHandler func(channel Channel, request quicssh.SignalRequest, wantReply bool)
+type ExitStatusReqHandler func(channel Channel, request quicssh.ExitStatusRequest, wantReply bool)
+type ExitSignalReqHandler func(channel Channel, request quicssh.ExitSignalRequest, wantReply bool)
 
-type ChannelDataHandler func(channel Channel, dataType ssh3.SSHDataType, data string)
+type ChannelDataHandler func(channel Channel, dataType quicssh.SSHDataType, data string)
 
 type channelCloseListener interface {
 	onChannelClose(channel Channel)
@@ -74,14 +74,14 @@ type Channel interface {
 	ChannelID() util.ChannelID
 	ConversationID() ConversationID
 	ConversationStreamID() uint64
-	NextMessage() (ssh3.Message, error)
+	NextMessage() (quicssh.Message, error)
 	ReceiveDatagram(ctx context.Context) ([]byte, error)
 	SendDatagram(datagram []byte) error
-	SendRequest(r *ssh3.ChannelRequestMessage) error
+	SendRequest(r *quicssh.ChannelRequestMessage) error
 	CancelRead()
 	Close()
 	MaxPacketSize() uint64
-	WriteData(dataBuf []byte, dataType ssh3.SSHDataType) (int, error)
+	WriteData(dataBuf []byte, dataType quicssh.SSHDataType) (int, error)
 	ChannelType() string
 	confirmChannel(maxPacketSize uint64) error
 	setDatagramSender(func(datagram []byte) error)
@@ -97,7 +97,7 @@ type channelImpl struct {
 	confirmReceived bool
 	header          []byte
 
-	datagramSender util.SSH3DatagramSenderFunc
+	datagramSender util.QUICSSHDatagramSenderFunc
 
 	channelCloseListener
 
@@ -229,7 +229,7 @@ func parseTCPForwardingHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, 
 }
 
 func NewChannel(conversationStreamID uint64, conversationID ConversationID, channelID uint64, channelType string, maxPacketSize uint64, recv quic.ReceiveStream,
-	send io.WriteCloser, datagramSender util.SSH3DatagramSenderFunc, channelCloseListener channelCloseListener, sendHeader bool, confirmSent bool,
+	send io.WriteCloser, datagramSender util.QUICSSHDatagramSenderFunc, channelCloseListener channelCloseListener, sendHeader bool, confirmSent bool,
 	confirmReceived bool, datagramsQueueSize uint64, additonalHeaderBytes []byte) Channel {
 	var header []byte = nil
 	if sendHeader {
@@ -269,24 +269,24 @@ func (c *channelImpl) ConversationID() ConversationID {
 // / The error is EOF only if no bytes were read. If an EOF happens
 // / after reading some but not all the bytes, nextMessage returns
 // / ErrUnexpectedEOF.
-func (c *channelImpl) nextMessage() (ssh3.Message, error) {
-	return ssh3.ParseMessage(util.NewReader(c.recv))
+func (c *channelImpl) nextMessage() (quicssh.Message, error) {
+	return quicssh.ParseMessage(util.NewReader(c.recv))
 }
 
 // The returned  message will neither be ChannelOpenConfirmationMessage nor ChannelOpenFailureMessage
 // as this function handles it internally
-func (c *channelImpl) NextMessage() (ssh3.Message, error) {
+func (c *channelImpl) NextMessage() (quicssh.Message, error) {
 	genericMessage, err := c.nextMessage()
 	if err != nil {
 		return nil, err
 	}
 
 	switch message := genericMessage.(type) {
-	case *ssh3.ChannelOpenConfirmationMessage:
+	case *quicssh.ChannelOpenConfirmationMessage:
 		c.confirmReceived = true
 		// let's read the next message
 		return c.NextMessage()
-	case *ssh3.ChannelOpenFailureMessage:
+	case *quicssh.ChannelOpenFailureMessage:
 		return nil, ChannelOpenFailure{ReasonCode: message.ReasonCode, ErrorMsg: message.ErrorMessageUTF8}
 	}
 
@@ -308,14 +308,14 @@ func (c *channelImpl) maybeSendHeader() error {
 	return nil
 }
 
-func (c *channelImpl) WriteData(dataBuf []byte, dataType ssh3.SSHDataType) (int, error) {
+func (c *channelImpl) WriteData(dataBuf []byte, dataType quicssh.SSHDataType) (int, error) {
 	err := c.maybeSendHeader()
 	if err != nil {
 		return 0, err
 	}
 	written := 0
 	for len(dataBuf) > 0 {
-		dataMsg := &ssh3.DataOrExtendedDataMessage{
+		dataMsg := &quicssh.DataOrExtendedDataMessage{
 			DataType: dataType,
 			Data:     "",
 		}
@@ -340,14 +340,14 @@ func (c *channelImpl) WriteData(dataBuf []byte, dataType ssh3.SSHDataType) (int,
 }
 
 func (c *channelImpl) confirmChannel(maxPacketSize uint64) error {
-	err := c.sendMessage(&ssh3.ChannelOpenConfirmationMessage{MaxPacketSize: maxPacketSize})
+	err := c.sendMessage(&quicssh.ChannelOpenConfirmationMessage{MaxPacketSize: maxPacketSize})
 	if err == nil {
 		c.confirmSent = true
 	}
 	return err
 }
 
-func (c *channelImpl) sendMessage(m ssh3.Message) error {
+func (c *channelImpl) sendMessage(m quicssh.Message) error {
 	err := c.maybeSendHeader()
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func (c *channelImpl) SendDatagram(datagram []byte) error {
 	return c.datagramSender(datagram)
 }
 
-func (c *channelImpl) SendRequest(r *ssh3.ChannelRequestMessage) error {
+func (c *channelImpl) SendRequest(r *quicssh.ChannelRequestMessage) error {
 	//TODO: make it thread safe
 	return c.sendMessage(r)
 }

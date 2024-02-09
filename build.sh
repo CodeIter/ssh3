@@ -8,16 +8,16 @@ shopt -s nullglob
 
 # build client
 echo building client...
-bash -xc "go build -o ssh3 cmd/ssh3/main.go"
+bash -xc "go build -o quicssh cmd/quicssh/main.go"
 
 # build server - require gcc
 echo building server...
 if [[ "${PREFIX:-}" =~ ^/data/data/com.termux[^/]*/files ]] ; then
-  bash -xc "CGO_ENABLED=1 go build -tags disable_password_auth -o ssh3-server cmd/ssh3-server/main.go"
+  bash -xc "CGO_ENABLED=1 go build -tags disable_password_auth -o quicssh-server cmd/quicssh-server/main.go"
 else
-  bash -xc "CGO_ENABLED=1 go build -o ssh3-server cmd/ssh3-server/main.go"
+  bash -xc "CGO_ENABLED=1 go build -o quicssh-server cmd/quicssh-server/main.go"
 fi
 
 mkdir -vp ~/.local/bin
-cp -afv ./ssh3 ./ssh3-server ./ssh3-*.sh ~/.local/bin
+cp -afv ./quicssh ./quicssh-server ./quicssh-*.sh ~/.local/bin
 

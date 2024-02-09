@@ -1,4 +1,4 @@
-package ssh3_test
+package quicssh_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestSsh3(t *testing.T) {
+func TestQuicSsh(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Ssh3 Suite")
+	RunSpecs(t, "QuicSsh Suite")
 }

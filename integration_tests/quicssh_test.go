@@ -16,11 +16,11 @@ import (
 	. "github.com/onsi/gomega/gexec"
 )
 
-var ssh3Path string
-var ssh3ServerPath string
+var quicsshPath string
+var quicsshServerPath string
 
-const DEFAULT_URL_PATH = "/ssh3-tests"
-const DEFAULT_PROXY_URL_PATH = "/ssh3-tests-proxy"
+const DEFAULT_URL_PATH = "/quicssh-tests"
+const DEFAULT_PROXY_URL_PATH = "/quicssh-tests-proxy"
 
 var serverCommand *exec.Cmd
 var serverSessions map[string]*Session = make(map[string]*Session) // bind address to session
@@ -60,37 +60,37 @@ func fileExists(path string) bool {
 
 var _ = BeforeSuite(func() {
 	var err error
-	ssh3Path, err = Build("../cmd/ssh3/main.go")
+	quicsshPath, err = Build("../cmd/quicssh/main.go")
 	Expect(err).ToNot(HaveOccurred())
-	if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") == "1" {
+	if os.Getenv("QUICSSH_INTEGRATION_TESTS_WITH_SERVER_ENABLED") == "1" {
 		// Tests implying a server will only work on Linux
 		// (the server currently only builds on Linux)
 		// and the server needs root priviledges, so we only
 		// run them is they are enabled explicitly.
-		ssh3ServerPath, err = BuildWithEnvironment("../cmd/ssh3-server/main.go", []string{fmt.Sprintf("CGO_ENABLED=%s", os.Getenv("CGO_ENABLED"))})
+		quicsshServerPath, err = BuildWithEnvironment("../cmd/quicssh-server/main.go", []string{fmt.Sprintf("CGO_ENABLED=%s", os.Getenv("CGO_ENABLED"))})
 		Expect(err).ToNot(HaveOccurred())
-		serverCommand = exec.Command(ssh3ServerPath,
+		serverCommand = exec.Command(quicsshServerPath,
 			"-bind", serverBind,
 			"-v",
 			"-enable-password-login",
 			"-url-path", DEFAULT_URL_PATH,
 			"-cert", os.Getenv("CERT_PEM"),
 			"-key", os.Getenv("CERT_PRIV_KEY"))
-		serverCommand.Env = append(serverCommand.Env, "SSH3_LOG_LEVEL=debug")
+		serverCommand.Env = append(serverCommand.Env, "QUICSSH_LOG_LEVEL=debug")
 		session, err := Start(serverCommand, GinkgoWriter, GinkgoWriter)
 		Expect(err).ToNot(HaveOccurred())
 
 		serverSessions[serverBind] = session
 
 		for tag, bind := range oldServerBinds {
-			gobin, err := os.MkdirTemp("", fmt.Sprintf("ssh3-backwards-compatible-versions-%s", tag))
+			gobin, err := os.MkdirTemp("", fmt.Sprintf("quicssh-backwards-compatible-versions-%s", tag))
 			Expect(err).ToNot(HaveOccurred())
-			cmd := exec.Command("go", "install", fmt.Sprintf("github.com/francoismichel/ssh3/cmd/ssh3-server@%s", tag))
+			cmd := exec.Command("go", "install", fmt.Sprintf("github.com/francoismichel/quicssh/cmd/quicssh-server@%s", tag))
 			cmd.Env = os.Environ()
 			cmd.Env = append(cmd.Env, fmt.Sprintf("GOBIN=%s", gobin))
 			err = cmd.Run()
 			Expect(err).ToNot(HaveOccurred())
-			serverPath := path.Join(gobin, "ssh3-server")
+			serverPath := path.Join(gobin, "quicssh-server")
 			Expect(err).ToNot(HaveOccurred())
 			backwardsCompatibleServerCommand := exec.Command(serverPath,
 				"-bind", bind,
@@ -99,20 +99,20 @@ var _ = BeforeSuite(func() {
 				"-url-path", DEFAULT_URL_PATH,
 				"-cert", os.Getenv("CERT_PEM"),
 				"-key", os.Getenv("CERT_PRIV_KEY"))
-			serverCommand.Env = append(backwardsCompatibleServerCommand.Env, "SSH3_LOG_LEVEL=debug")
+			serverCommand.Env = append(backwardsCompatibleServerCommand.Env, "QUICSSH_LOG_LEVEL=debug")
 			session, err = Start(backwardsCompatibleServerCommand, GinkgoWriter, GinkgoWriter)
 			Expect(err).ToNot(HaveOccurred())
 			serverSessions[bind] = session
 		}
 
-		proxyServerCommand = exec.Command(ssh3ServerPath,
+		proxyServerCommand = exec.Command(quicsshServerPath,
 			"-bind", proxyServerBind,
 			"-v",
 			"-enable-password-login",
 			"-url-path", DEFAULT_PROXY_URL_PATH,
 			"-cert", os.Getenv("CERT_PEM"),
 			"-key", os.Getenv("CERT_PRIV_KEY"))
-		proxyServerCommand.Env = append(proxyServerCommand.Env, "SSH3_LOG_LEVEL=debug")
+		proxyServerCommand.Env = append(proxyServerCommand.Env, "QUICSSH_LOG_LEVEL=debug")
 		proxyServerSession, err = Start(proxyServerCommand, GinkgoWriter, GinkgoWriter)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -138,11 +138,11 @@ var _ = AfterSuite(func() {
 	}
 })
 
-var _ = Describe("Testing the ssh3 cli", func() {
+var _ = Describe("Testing the quicssh cli", func() {
 
 	Context("Usage", func() {
 		It("Displays the help", func() {
-			command := exec.Command(ssh3Path, "-h")
+			command := exec.Command(quicsshPath, "-h")
 			session, err := Start(command, GinkgoWriter, GinkgoWriter)
 			Expect(err).ToNot(HaveOccurred())
 			Eventually(session).Should(Exit(0))
@@ -152,7 +152,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 	Context("With running server", func() {
 		BeforeEach(func() {
-			if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") != "1" {
+			if os.Getenv("QUICSSH_INTEGRATION_TESTS_WITH_SERVER_ENABLED") != "1" {
 				Skip("skipping integration tests")
 			}
 			Consistently(serverSessions[serverBind], "200ms").ShouldNot(Exit())
@@ -177,7 +177,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			Context("Client behaviour", func() {
 				It("Should connect using an RSA privkey", func() {
 					clientArgs = append(getClientArgs(rsaPrivKeyPath), "echo", "Hello, World!")
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
@@ -186,7 +186,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 				It("Should connect using an RSA privkey through proxy jump", func() {
 					clientArgs = append(getClientArgs(rsaPrivKeyPath, "-proxy-jump", fmt.Sprintf("%s@%s%s", username, proxyServerBind, DEFAULT_PROXY_URL_PATH)), "echo", "Hello, World!")
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
@@ -199,7 +199,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					When("server version is"+tag+", bind is"+bind, func() {
 						It("Should connect using an RSA privkey to old supported server", func() {
 							clientArgs = append(getClientArgsWithBind(rsaPrivKeyPath, bind), "echo", "Hello, World!")
-							command := exec.Command(ssh3Path, clientArgs...)
+							command := exec.Command(quicsshPath, clientArgs...)
 							session, err := Start(command, GinkgoWriter, GinkgoWriter)
 							Expect(err).ToNot(HaveOccurred())
 							Eventually(session).Should(Exit(0))
@@ -210,7 +210,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 				It("Should connect using an ed25519 privkey", func() {
 					clientArgs = append(getClientArgs(ed25519PrivKeyPath), "echo", "Hello, World!")
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
@@ -224,7 +224,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					username = ecdsaUsername
 					clientArgs = append(getClientArgs(ecdsaPrivKeyPath), "echo", "Hello, World!")
 					username = savedUsername
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
@@ -237,22 +237,22 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					clientArgs255 := append(getClientArgs(rsaPrivKeyPath), "exit", "255")
 					clientArgsMinus1 := append(getClientArgs(rsaPrivKeyPath), "exit", "-1")
 
-					command0 := exec.Command(ssh3Path, clientArgs0...)
+					command0 := exec.Command(quicsshPath, clientArgs0...)
 					session, err := Start(command0, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
 
-					command1 := exec.Command(ssh3Path, clientArgs1...)
+					command1 := exec.Command(quicsshPath, clientArgs1...)
 					session, err = Start(command1, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(1))
 
-					command255 := exec.Command(ssh3Path, clientArgs255...)
+					command255 := exec.Command(quicsshPath, clientArgs255...)
 					session, err = Start(command255, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(255))
 
-					commandMinus1 := exec.Command(ssh3Path, clientArgsMinus1...)
+					commandMinus1 := exec.Command(quicsshPath, clientArgsMinus1...)
 					session, err = Start(commandMinus1, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(255))
@@ -260,7 +260,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 				It("Should run the interactive shell in login mode and read .profile", func() {
 					clientArgs = getClientArgs(rsaPrivKeyPath)
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					stdin, err := command.StdinPipe()
 					Expect(err).ToNot(HaveOccurred())
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
@@ -274,7 +274,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 				// It checks that upon executing the client with the -forward-tcp,
 				// a TCP socket is indeed well open on the client and is indeed forwarded
-				// through the SSH3 connection towards the specified remote IP and port.
+				// through the QUICSSH connection towards the specified remote IP and port.
 				Context("TCP port forwarding", func() {
 					testTCPPortForwarding := func(localPort uint16, proxyJump bool, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string) {
 						localIP := "[::1]"
@@ -322,7 +322,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						}
 						additionalArgs = append(additionalArgs, "-forward-tcp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
 						clientArgs := getClientArgs(rsaPrivKeyPath, additionalArgs...)
-						command := exec.Command(ssh3Path, clientArgs...)
+						command := exec.Command(quicsshPath, clientArgs...)
 						session, err := Start(command, GinkgoWriter, GinkgoWriter)
 						Expect(err).ToNot(HaveOccurred())
 						defer session.Terminate()
@@ -398,7 +398,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 			// It checks that upon executing the client with the -forward-udp,
 			// a UDP socket is indeed well open on the client and is indeed forwarded
-			// through the SSH3 connection towards the specified remote IP and port.
+			// through the QUICSSH connection towards the specified remote IP and port.
 			Context("UDP port forwarding", func() {
 				testUDPPortForwarding := func(localPort uint16, proxyJump bool, remoteAddr *net.UDPAddr, messageFromClient, messageFromServer string) {
 					localIP := "[::1]"
@@ -438,7 +438,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					}
 					additionalArgs = append(additionalArgs, "-forward-udp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
 					clientArgs := getClientArgs(rsaPrivKeyPath, additionalArgs...)
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					defer session.Terminate()
@@ -446,7 +446,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					// Wait for some time to ensure that the client has established the forwarding
 					time.Sleep(2 * time.Second)
 
-					// if the remote addr is IPv4 (resp. IPv6), ssh3 listens on the IPv4 (resp. IPv6) loopback
+					// if the remote addr is IPv4 (resp. IPv6), quicssh listens on the IPv4 (resp. IPv6) loopback
 					// Try to connect to the local forwarded port
 					localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
 
@@ -511,7 +511,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				It("Should not grand access to non-authorized identity", func() {
 					clientArgs = append(getClientArgs(attackerPrivKeyPath), "echo", "Hello, World!")
 
-					command := exec.Command(ssh3Path, clientArgs...)
+					command := exec.Command(quicsshPath, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit())

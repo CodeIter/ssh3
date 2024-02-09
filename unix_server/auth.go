@@ -8,21 +8,21 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/util/unix_util"
+	"github.com/francoismichel/quicssh"
+	"github.com/francoismichel/quicssh/util/unix_util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 )
 
-func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) (http.HandlerFunc, error) {
+func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc quicssh.AuthenticatedHandlerFunc) (http.HandlerFunc, error) {
 	if runtime.GOOS != "linux" && enablePasswordLogin {
 		return nil, fmt.Errorf("password login not supported on %s/%s systems", runtime.GOOS, runtime.GOARCH)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Server", ssh3.GetCurrentVersionString())
-		peerVersion, err := ssh3.ParseVersionString(r.UserAgent())
+		w.Header().Set("Server", quicssh.GetCurrentVersionString())
+		peerVersion, err := quicssh.ParseVersionString(r.UserAgent())
 		log.Debug().Msgf("received request from User-Agent %s", r.UserAgent())
 		log.Debug().Msgf("peer version: protocol version %s, software version %s", peerVersion.GetProtocolVersion(), peerVersion.GetSoftwareVersion())
 		// currently apply strict version rules
@@ -30,8 +30,8 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			http.Error(w, fmt.Sprintf("Unsupported user-agent: %s", r.UserAgent()[:100]), http.StatusForbidden)
 			return
 		}
-		if !ssh3.IsVersionSupported(peerVersion) {
-			http.Error(w, fmt.Sprintf("Unsupported version: %s not supported by server with version %s", peerVersion.GetProtocolVersion(), ssh3.ThisVersion().GetProtocolVersion()), http.StatusForbidden)
+		if !quicssh.IsVersionSupported(peerVersion) {
+			http.Error(w, fmt.Sprintf("Unsupported version: %s not supported by server with version %s", peerVersion.GetProtocolVersion(), quicssh.ThisVersion().GetProtocolVersion()), http.StatusForbidden)
 			return
 		}
 		// Only call Flush() here, as calling flush prevents from adding the Content-Length header to the response
@@ -53,7 +53,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			return
 		}
 		str := r.Body.(http3.HTTPStreamer).HTTPStream()
-		conv, err := ssh3.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize, peerVersion)
+		conv, err := quicssh.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize, peerVersion)
 		if err != nil {
 			log.Error().Msgf("could not create new server conversation")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -76,7 +76,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 	}, nil
 }
 
-func HandleBasicAuth(handlerFunc ssh3.AuthenticatedHandlerFunc, conv *ssh3.Conversation) http.HandlerFunc {
+func HandleBasicAuth(handlerFunc quicssh.AuthenticatedHandlerFunc, conv *quicssh.Conversation) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {

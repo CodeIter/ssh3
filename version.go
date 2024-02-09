@@ -1,4 +1,4 @@
-package ssh3
+package quicssh
 
 import (
 	"fmt"
@@ -16,13 +16,13 @@ import (
 //
 // It currently implements a first early version with no specification (alpha).
 // Once IETF drafts get published, we plan on having versions such as
-// 3.0_draft-michel-ssh3-XX when implementing the IETF specification from
-// draft-michel-ssh3-XX.
+// 3.0_draft-michel-quicssh-XX when implementing the IETF specification from
+// draft-michel-quicssh-XX.
 const PROTOCOL_MAJOR int = 3
 const PROTOCOL_MINOR int = 0
 const PROTOCOL_EXPERIMENTAL_SPEC_VERSION string = "alpha-00"
 
-const SOFTWARE_IMPLEMENTATION_NAME string = "francoismichel/ssh3"
+const SOFTWARE_IMPLEMENTATION_NAME string = "francoismichel/quicssh"
 const SOFTWARE_MAJOR int = 0
 const SOFTWARE_MINOR int = 1
 const SOFTWARE_PATCH int = 7
@@ -64,9 +64,9 @@ func IsVersionSupported(other Version) bool {
 		return false
 	}
 
-	// special case: to our knowledge, experimental spec version older than alpha-00 are only implemented by us (i.e. francoismichel/ssh3)
+	// special case: to our knowledge, experimental spec version older than alpha-00 are only implemented by us (i.e. francoismichel/quicssh)
 	// this should be removed in the near future, once we remove support for these legacy servers
-	if other.protocolVersion.ExperimentalSpecVersion == "" && other.softwareVersion.ImplementationName == "francoismichel/ssh3" &&
+	if other.protocolVersion.ExperimentalSpecVersion == "" && other.softwareVersion.ImplementationName == "francoismichel/quicssh" &&
 		other.softwareVersion.Major == 0 && other.softwareVersion.Minor == 1 && other.softwareVersion.Patch <= 5 {
 		// then, only support software version >= 0.1.3
 		return other.softwareVersion.Patch >= 3

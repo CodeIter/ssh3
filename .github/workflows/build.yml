@@ -9,12 +9,12 @@ jobs:
         matrix:
           go-version: [ '1.21.x', '1.22.0-rc.1' ]
           goos: [linux]
-          ecdsatestuser: [ssh3-ecdsa-testuser]
-          testuser: [ssh3-testuser]
-          testpasswd: [ssh3-testpasswd]
-          ecdsatestpasswd: [ssh3-testpasswd]
-          testuserhome: [/home/ssh3-testuser]
-          ecdsatestuserhome: [/home/ssh3-ecdsatestuser]
+          ecdsatestuser: [quicssh-ecdsa-testuser]
+          testuser: [quicssh-testuser]
+          testpasswd: [quicssh-testpasswd]
+          ecdsatestpasswd: [quicssh-testpasswd]
+          testuserhome: [/home/quicssh-testuser]
+          ecdsatestuserhome: [/home/quicssh-ecdsatestuser]
           archparams: [{goarch: amd64, cc: gcc}] #,{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
     runs-on: ubuntu-22.04
 
@@ -42,20 +42,20 @@ jobs:
         run: sudo useradd -m -d ${{matrix.testuserhome}} -s /bin/bash ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Add ecdsa test user (should be removed in the future when support for 0.1.5 is removed)
         run: sudo useradd -m -d ${{matrix.ecdsatestuserhome}} -s /bin/bash ${{matrix.ecdsatestuser}} && echo "${{matrix.ecdsatestuser}}:${{matrix.ecdsatestpasswd}}" | sudo chpasswd
-      - name: Create .ssh3 directory
-        run: sudo su ${{matrix.testuser}} -c 'mkdir -p ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
-      - name: Create .ssh3 directory for ecdsatestuser
-        run: sudo su ${{matrix.ecdsatestuser}} -c 'mkdir -p ${{matrix.ecdsatestuserhome}}/.ssh ${{matrix.ecdsatestuserhome}}/.ssh3'
+      - name: Create .quicssh directory
+        run: sudo su ${{matrix.testuser}} -c 'mkdir -p ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.quicssh'
+      - name: Create .quicssh directory for ecdsatestuser
+        run: sudo su ${{matrix.ecdsatestuser}} -c 'mkdir -p ${{matrix.ecdsatestuserhome}}/.ssh ${{matrix.ecdsatestuserhome}}/.quicssh'
       - name: Ensure there are no existing .profile or similar files for testuser
         run:  sudo rm -f ${{matrix.testuserhome}}/.profile ${{matrix.testuserhome}}/.bash_profile ${{matrix.testuserhome}}/.bash_login
       - name: add the attacker's key as commented in testuser's authorzed identities
-        run: echo "#" $(cat attacker_id_rsa.pub) | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
+        run: echo "#" $(cat attacker_id_rsa.pub) | sudo tee -a ${{matrix.testuserhome}}/.quicssh/authorized_identities
       - name: Put test public keys in testuser's authorized_identities
-        run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
+        run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub | sudo tee -a ${{matrix.testuserhome}}/.quicssh/authorized_identities
       - name: Put ecdsa public key in ecdsatestuser's authorized_identities (currently needed for retrocompatibility integration tests, ecdsatestuser should be removed in the future)
-        run: cat /testuser_id_ecdsa.pub | sudo tee -a ${{matrix.ecdsatestuserhome}}/.ssh3/authorized_identities
+        run: cat /testuser_id_ecdsa.pub | sudo tee -a ${{matrix.ecdsatestuserhome}}/.quicssh/authorized_identities
       - name: log authorized_identities
-        run: cat ${{matrix.testuserhome}}/.ssh3/authorized_identities
+        run: cat ${{matrix.testuserhome}}/.quicssh/authorized_identities
       - name: Integration tests
         run: sudo -E PATH=$PATH make -e integration-tests
         env:
@@ -71,7 +71,7 @@ jobs:
           CGO_ENABLED: "1"
           GOOS: ${{matrix.goos}}
           GOARCH: ${{matrix.archparams.goarch}}
-          SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED: "1"
+          QUICSSH_INTEGRATION_TESTS_WITH_SERVER_ENABLED: "1"
   build-macos:
     strategy:
       matrix:

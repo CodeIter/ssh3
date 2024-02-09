@@ -22,11 +22,11 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
-	"github.com/francoismichel/ssh3/client/winsize"
-	ssh3Messages "github.com/francoismichel/ssh3/message"
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/quicssh"
+	"github.com/francoismichel/quicssh/auth"
+	"github.com/francoismichel/quicssh/client/winsize"
+	quicsshMessages "github.com/francoismichel/quicssh/message"
+	"github.com/francoismichel/quicssh/util"
 )
 
 type ExitStatus struct {
@@ -52,7 +52,7 @@ func (e NoSuitableIdentity) Error() string {
 	return "no suitable identity found"
 }
 
-func forwardAgent(parent context.Context, channel ssh3.Channel) error {
+func forwardAgent(parent context.Context, channel quicssh.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
 	if sockPath == "" {
 		return fmt.Errorf("no auth socket in SSH_AUTH_SOCK env var")
@@ -65,7 +65,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	ctx, cancel := context.WithCancelCause(parent)
 	go func() {
 		var err error = nil
-		var genericMessage ssh3Messages.Message
+		var genericMessage quicsshMessages.Message
 		for {
 			select {
 			case <-ctx.Done():
@@ -85,7 +85,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 					return
 				}
 				switch message := genericMessage.(type) {
-				case *ssh3Messages.DataOrExtendedDataMessage:
+				case *quicsshMessages.DataOrExtendedDataMessage:
 					_, err = c.Write([]byte(message.Data))
 					if err != nil {
 						err = fmt.Errorf("error when writing on unix socker for agent forwarding channel %d: %s", channel.ChannelID(), err.Error())
@@ -120,7 +120,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 				log.Error().Msgf("could not read on unix socket: %s", err.Error())
 				return err
 			}
-			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			_, err = channel.WriteData(buf[:n], quicsshMessages.SSH_EXTENDED_DATA_NONE)
 			if err != nil {
 				cancel(err)
 				log.Error().Msgf("could not write on ssh channel: %s", err.Error())
@@ -130,7 +130,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	}
 }
 
-func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+func forwardTCPInBackground(ctx context.Context, channel quicssh.Channel, conn *net.TCPConn) {
 	go func() {
 		defer conn.CloseWrite()
 		for {
@@ -153,8 +153,8 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 
 			switch message := genericMessage.(type) {
-			case *ssh3Messages.DataOrExtendedDataMessage:
-				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+			case *quicsshMessages.DataOrExtendedDataMessage:
+				if message.DataType == quicsshMessages.SSH_EXTENDED_DATA_NONE {
 					_, err := conn.Write([]byte(message.Data))
 					if err != nil {
 						log.Error().Msgf("could not write data on TCP socket: %s", err)
@@ -186,7 +186,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				log.Error().Msgf("could read data on TCP socket: %s", err)
 				return
 			}
-			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			_, errWrite := channel.WriteData(buf[:n], quicsshMessages.SSH_EXTENDED_DATA_NONE)
 			if errWrite != nil {
 				switch quicErr := errWrite.(type) {
 				case *quic.StreamError:
@@ -209,7 +209,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 
 type Client struct {
 	qconn quic.EarlyConnection
-	*ssh3.Conversation
+	*quicssh.Conversation
 }
 
 func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
@@ -257,7 +257,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	log.Debug().Msgf("QUIC handshake complete")
 	// Now, we're 1-RTT, we can get the TLS exporter and create the conversation
 	tls := qconn.ConnectionState().TLS
-	conv, err := ssh3.NewClientConversation(30000, 10, &tls)
+	conv, err := quicssh.NewClientConversation(30000, 10, &tls)
 	if err != nil {
 		return nil, err
 	}
@@ -267,12 +267,12 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-	req.Proto = "ssh3"
+	req.Proto = "quicssh"
 
-	var identity ssh3.Identity
+	var identity quicssh.Identity
 	for _, method := range options.authMethods {
 		switch m := method.(type) {
-		case *ssh3.PasswordAuthMethod:
+		case *quicssh.PasswordAuthMethod:
 			log.Debug().Msgf("try password-based auth")
 			fmt.Printf("password for %s:", hostUrl.String())
 			password, err := term.ReadPassword(int(syscall.Stdin))
@@ -282,7 +282,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 				return nil, err
 			}
 			identity = m.IntoIdentity(string(password))
-		case *ssh3.PrivkeyFileAuthMethod:
+		case *quicssh.PrivkeyFileAuthMethod:
 			log.Debug().Msgf("try file-based pubkey auth using file %s", m.Filename())
 			identity, err = m.IntoIdentityWithoutPassphrase()
 			// could not identify without passphrase, try agent authentication by using the key's public key
@@ -306,7 +306,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 					for _, agentKey := range agentKeys {
 						if bytes.Equal(agentKey.Marshal(), pubkey.Marshal()) {
 							log.Debug().Msgf("found key in agent: %s", agentKey)
-							identity = ssh3.NewAgentAuthMethod(pubkey).IntoIdentity(sshAgent)
+							identity = quicssh.NewAgentAuthMethod(pubkey).IntoIdentity(sshAgent)
 							foundAgentKey = true
 							break
 						}
@@ -333,10 +333,10 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 			} else if err != nil {
 				log.Warn().Msgf("Could not load private key: %s", err)
 			}
-		case *ssh3.AgentAuthMethod:
+		case *quicssh.AgentAuthMethod:
 			log.Debug().Msgf("try ssh-agent-based auth")
 			identity = m.IntoIdentity(sshAgent)
-		case *ssh3.OidcAuthMethod:
+		case *quicssh.OidcAuthMethod:
 			log.Debug().Msgf("try OIDC auth to issuer %s", m.OIDCConfig().IssuerUrl)
 			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, m.DoPKCE())
 			if err != nil {
@@ -363,7 +363,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	}
 
 	log.Debug().Msgf("establish conversation with the server")
-	err = conv.EstablishClientConversation(req, roundTripper, ssh3.AVAILABLE_CLIENT_VERSIONS)
+	err = conv.EstablishClientConversation(req, roundTripper, quicssh.AVAILABLE_CLIENT_VERSIONS)
 	if errors.Is(err, util.Unauthorized{}) {
 		log.Error().Msgf("Access denied from the server: unauthorized")
 		return nil, err
@@ -385,7 +385,7 @@ func (c *Client) ForwardUDP(ctx context.Context, localUDPAddr *net.UDPAddr, remo
 		log.Error().Msgf("could listen on UDP socket: %s", err)
 		return nil, err
 	}
-	forwardings := make(map[string]ssh3.Channel)
+	forwardings := make(map[string]quicssh.Channel)
 	go func() {
 		buf := make([]byte, 1500)
 		for {
@@ -466,7 +466,7 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 	log.Debug().Msgf("opened new session channel")
 
 	if forwardSSHAgent {
-		_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
+		_, err := channel.WriteData([]byte("forward-agent"), quicsshMessages.SSH_EXTENDED_DATA_NONE)
 		if err != nil {
 			log.Error().Msgf("could not forward agent: %s", err.Error())
 			return err
@@ -507,9 +507,9 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 		hasWinSize := err == nil
 		if isATTY && hasWinSize {
 			err = channel.SendRequest(
-				&ssh3Messages.ChannelRequestMessage{
+				&quicsshMessages.ChannelRequestMessage{
 					WantReply: true,
-					ChannelRequest: &ssh3Messages.PtyRequest{
+					ChannelRequest: &quicsshMessages.PtyRequest{
 						Term:        os.Getenv("TERM"),
 						CharWidth:   uint64(windowSize.NCols),
 						CharHeight:  uint64(windowSize.NRows),
@@ -527,9 +527,9 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 		}
 
 		err = channel.SendRequest(
-			&ssh3Messages.ChannelRequestMessage{
+			&quicsshMessages.ChannelRequestMessage{
 				WantReply:      true,
-				ChannelRequest: &ssh3Messages.ShellRequest{},
+				ChannelRequest: &quicsshMessages.ShellRequest{},
 			},
 		)
 		if err != nil {
@@ -550,9 +550,9 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 		}
 	} else {
 		channel.SendRequest(
-			&ssh3Messages.ChannelRequestMessage{
+			&quicsshMessages.ChannelRequestMessage{
 				WantReply: true,
-				ChannelRequest: &ssh3Messages.ExecRequest{
+				ChannelRequest: &quicsshMessages.ExecRequest{
 					Command: strings.Join(command, " "),
 				},
 			},
@@ -570,7 +570,7 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 		for {
 			n, err := os.Stdin.Read(buf)
 			if n > 0 {
-				_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+				_, err2 := channel.WriteData(buf[:n], quicsshMessages.SSH_EXTENDED_DATA_NONE)
 				if err2 != nil {
 					fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
 					return
@@ -592,40 +592,40 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 			os.Exit(-1)
 		}
 		switch message := genericMessage.(type) {
-		case *ssh3Messages.ChannelRequestMessage:
+		case *quicsshMessages.ChannelRequestMessage:
 			switch requestMessage := message.ChannelRequest.(type) {
-			case *ssh3Messages.PtyRequest:
+			case *quicsshMessages.PtyRequest:
 				fmt.Fprintf(os.Stderr, "receiving a pty request on the client is not implemented\n")
-			case *ssh3Messages.X11Request:
+			case *quicsshMessages.X11Request:
 				fmt.Fprintf(os.Stderr, "receiving a x11 request on the client is not implemented\n")
-			case *ssh3Messages.ShellRequest:
+			case *quicsshMessages.ShellRequest:
 				fmt.Fprintf(os.Stderr, "receiving a shell request on the client is not implemented\n")
-			case *ssh3Messages.ExecRequest:
+			case *quicsshMessages.ExecRequest:
 				fmt.Fprintf(os.Stderr, "receiving a exec request on the client is not implemented\n")
-			case *ssh3Messages.SubsystemRequest:
+			case *quicsshMessages.SubsystemRequest:
 				fmt.Fprintf(os.Stderr, "receiving a subsystem request on the client is not implemented\n")
-			case *ssh3Messages.WindowChangeRequest:
+			case *quicsshMessages.WindowChangeRequest:
 				fmt.Fprintf(os.Stderr, "receiving a windowchange request on the client is not implemented\n")
-			case *ssh3Messages.SignalRequest:
+			case *quicsshMessages.SignalRequest:
 				fmt.Fprintf(os.Stderr, "receiving a signal request on the client is not implemented\n")
-			case *ssh3Messages.ExitStatusRequest:
-				log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
+			case *quicsshMessages.ExitStatusRequest:
+				log.Info().Msgf("quicssh: process exited with status: %d\n", requestMessage.ExitStatus)
 				// forward the process' status code to the user
 				return ExitStatus{StatusCode: int(requestMessage.ExitStatus)}
-			case *ssh3Messages.ExitSignalRequest:
-				log.Info().Msgf("ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
+			case *quicsshMessages.ExitSignalRequest:
+				log.Info().Msgf("quicssh: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
 				return ExitSignal{Signal: requestMessage.SignalNameWithoutSig, ErrorMessageUTF8: requestMessage.ErrorMessageUTF8}
 			}
-		case *ssh3Messages.DataOrExtendedDataMessage:
+		case *quicsshMessages.DataOrExtendedDataMessage:
 			switch message.DataType {
-			case ssh3Messages.SSH_EXTENDED_DATA_NONE:
+			case quicsshMessages.SSH_EXTENDED_DATA_NONE:
 				_, err = os.Stdout.Write([]byte(message.Data))
 				if err != nil {
 					log.Fatal().Msgf("%s", err)
 				}
 
 				log.Trace().Msgf("received data %s", message.Data)
-			case ssh3Messages.SSH_EXTENDED_DATA_STDERR:
+			case quicsshMessages.SSH_EXTENDED_DATA_STDERR:
 				_, err = os.Stderr.Write([]byte(message.Data))
 				if err != nil {
 					log.Fatal().Msgf("%s", err)

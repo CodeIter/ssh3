@@ -1,4 +1,4 @@
-module github.com/francoismichel/ssh3
+module github.com/francoismichel/quicssh
 
 require (
 	github.com/caddyserver/certmagic v0.20.0

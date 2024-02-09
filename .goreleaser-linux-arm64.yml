@@ -17,9 +17,9 @@ before:
 
 builds:
   - 
-    id: "ssh3"
-    main: ./cmd/ssh3/main.go
-    binary: ssh3
+    id: "quicssh"
+    main: ./cmd/quicssh/main.go
+    binary: quicssh
     goos:
       - linux
     goarch: 
@@ -30,9 +30,9 @@ builds:
       - static_build
       - feature
   - 
-    id: "ssh3-server"
-    main: ./cmd/ssh3-server/main.go
-    binary: ssh3-server
+    id: "quicssh-server"
+    main: ./cmd/quicssh-server/main.go
+    binary: quicssh-server
     env:
       - CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
       - CGO_ENABLED=1
